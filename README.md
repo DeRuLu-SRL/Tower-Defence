@@ -1,5 +1,8 @@
 # Tower-Defence
 
+# start application: npx expo start
+
+
 # Ce stim deja:
 - avem deck (4 carti) care permite user-ului sa plaseze anumite tipuri de towers in "zone" prestabilita ---> Pagina in meniul principal pentru Deck
 - fiecare mob cand moare lasa gold in urma sa
