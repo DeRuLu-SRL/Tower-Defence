@@ -1,4 +1,4 @@
-// screens/MainMenu.js
+// screens/MainMenuScreen.js
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
@@ -7,11 +7,20 @@ const MainMenu = ({ navigation }) => {
     <View style={styles.container}>
       <Text style={styles.title}>My Tower Defense Game</Text>
       
+      {/* → Endless Mode: navigates to the endless game screen */}
       <TouchableOpacity
         style={styles.button}
-        onPress={() => navigation.navigate('GameScreen')}
+        onPress={() => navigation.navigate('EndlessGameScreen')}
       >
-        <Text style={styles.buttonText}>Start Game</Text>
+        <Text style={styles.buttonText}>Endless Mode</Text>
+      </TouchableOpacity>
+
+      {/* → Story Mode / Level Selection */}
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => navigation.navigate('LevelsScreen')}
+      >
+        <Text style={styles.buttonText}>Select Level</Text>
       </TouchableOpacity>
 
       <View style={styles.row}>

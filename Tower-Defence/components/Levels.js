@@ -1,5 +1,4 @@
 // components/Levels.js
-
 export const levelConfigs = {
   1: {
     // Level 1: 10 red mobs and 1 yellow mob.

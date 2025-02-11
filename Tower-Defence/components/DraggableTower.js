@@ -1,4 +1,3 @@
-// components/DraggableTower.js
 import React, { useRef } from 'react';
 import { Animated, PanResponder, StyleSheet } from 'react-native';
 import Tower from './Tower';
@@ -19,7 +18,14 @@ const DraggableTower = ({ towerType, onDrop, initialPosition }) => {
       ),
       onPanResponderRelease: (evt, gestureState) => {
         pan.flattenOffset();
-        onDrop({ x: gestureState.moveX, y: gestureState.moveY });
+        // Extract the coordinates immediately before deferring the onDrop call.
+        const { pageX, pageY } = evt.nativeEvent;
+        setTimeout(() => {
+          onDrop({
+            x: pageX,
+            y: pageY,
+          });
+        }, 0);
         Animated.spring(pan, {
           toValue: initialPosition,
           useNativeDriver: false,
@@ -30,7 +36,7 @@ const DraggableTower = ({ towerType, onDrop, initialPosition }) => {
 
   return (
     <Animated.View style={[styles.icon, pan.getLayout()]} {...panResponder.panHandlers}>
-      <Tower towerType={towerType} color={towerType} position={{ x: 0, y: 0 }} />
+      <Tower towerType={towerType} position={{ x: 0, y: 0 }} />
     </Animated.View>
   );
 };

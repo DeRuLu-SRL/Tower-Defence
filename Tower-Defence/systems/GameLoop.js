@@ -1,4 +1,4 @@
-import React from 'react';
+// systems/GameLoop.js
 import Bullet from '../components/Bullet';
 
 const getDistance = (p1, p2) => {
@@ -6,7 +6,6 @@ const getDistance = (p1, p2) => {
   return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
 };
 
-// Simple collision detection: assumes obstacle is 80x80.
 const isColliding = (pos, obstacle) => {
   const obsX = obstacle.position.x;
   const obsY = obstacle.position.y;
@@ -22,8 +21,8 @@ const isColliding = (pos, obstacle) => {
 
 const GameLoop = (entities, { time, dispatch }) => {
   const delta = time.delta;
-
-  // --- Process Mob Movement ---
+  
+  // Process mob movement.
   Object.keys(entities).forEach(key => {
     const entity = entities[key];
     if (entity && entity.type === 'mob') {
@@ -35,17 +34,17 @@ const GameLoop = (entities, { time, dispatch }) => {
         const distance = Math.sqrt(dx * dx + dy * dy);
         let newX = entity.position.x + (dx / distance) * entity.speed * delta;
         let newY = entity.position.y + (dy / distance) * entity.speed * delta;
-        // Check obstacles
+        // Check obstacles.
         const obstacles = Object.keys(entities)
           .filter(k => entities[k].type === 'obstacle')
           .map(k => entities[k]);
         obstacles.forEach(obstacle => {
           if (isColliding({ x: newX, y: newY }, obstacle)) {
-            // Simple detour: shift position slightly
             newX += 10;
           }
         });
         if (distance < entity.speed * delta) {
+          // Remove mob if it reaches the target.
           delete entities[key];
         } else {
           entity.position.x = newX;
@@ -54,8 +53,8 @@ const GameLoop = (entities, { time, dispatch }) => {
       }
     }
   });
-
-  // --- Towers Shooting Mobs ---
+  
+  // Towers shooting mobs.
   Object.keys(entities).forEach(key => {
     const entity = entities[key];
     if (entity && entity.type === 'tower') {
@@ -101,8 +100,8 @@ const GameLoop = (entities, { time, dispatch }) => {
       }
     }
   });
-
-  // --- Update Bullet Positions and Handle Collision ---
+  
+  // Update bullets.
   Object.keys(entities).forEach(key => {
     const entity = entities[key];
     if (entity && entity.type === 'bullet') {
@@ -119,10 +118,11 @@ const GameLoop = (entities, { time, dispatch }) => {
         entity.position.x += entity.velocity.x * delta;
         entity.position.y += entity.velocity.y * delta;
         if (distance < 10) {
-          if (typeof target.hp === 'undefined') target.hp = 3;
+          target.hp = target.hp || 3;
           target.hp -= entity.damage;
           if (target.hp <= 0) {
             delete entities[target.id];
+            dispatch({ type: 'MOB_KILLED', mobType: target.mobType });
           }
           delete entities[key];
         }
@@ -139,7 +139,7 @@ const GameLoop = (entities, { time, dispatch }) => {
       }
     }
   });
-
+  
   return entities;
 };
 

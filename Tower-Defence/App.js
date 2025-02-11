@@ -4,6 +4,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
 import MainMenu from './screens/MainMenuScreen';
+import EndlessGameScreen from './screens/EndlessGameScreen';  // ← New endless mode screen!
+import LevelsScreen from './screens/LevelsScreen';
 import GameScreen from './screens/GameScreen';
 import DeckScreen from './screens/DeckScreen';
 import ShopScreen from './screens/ShopScreen';
@@ -15,6 +17,8 @@ export default function App() {
     <NavigationContainer>
       <Stack.Navigator initialRouteName="MainMenu">
         <Stack.Screen name="MainMenu" component={MainMenu} options={{ headerShown: false }} />
+        <Stack.Screen name="EndlessGameScreen" component={EndlessGameScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="LevelsScreen" component={LevelsScreen} options={{ headerShown: false }} /> 
         <Stack.Screen name="GameScreen" component={GameScreen} options={{ headerShown: false }} />
         <Stack.Screen name="DeckScreen" component={DeckScreen} options={{ headerShown: false }} />
         <Stack.Screen name="ShopScreen" component={ShopScreen} options={{ headerShown: false }} />
