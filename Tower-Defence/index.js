@@ -1,3 +1,5 @@
+// index.js (or App.js if you don't have index.js)
+import 'react-native-reanimated';  // <-- THIS MUST BE AT THE VERY TOP!
 import { registerRootComponent } from 'expo';
 
 import App from './App';

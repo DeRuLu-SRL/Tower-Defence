@@ -3,7 +3,7 @@
     "name": "Tower-Defence",
     "slug": "Tower-Defence",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -19,7 +19,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.anonymous.TowerDefence"
     },
     "web": {
       "favicon": "./assets/favicon.png"

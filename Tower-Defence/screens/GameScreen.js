@@ -1,61 +1,91 @@
+// screens/GameScreen.js
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
-  Image,
-  Alert,
   InteractionManager,
-  ScrollView,
+  Dimensions,
+  Animated,
+  Image
 } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import cloneDeep from 'lodash/cloneDeep';
+import ZoomableView from '../components/ZoomableView';
 
 import EnemySpawner from '../systems/EnemySpawner';
 import LevelCompletionSystem from '../systems/LevelCompletionSystem';
 import { levelConfigs } from '../components/Levels';
 import GameLoop from '../systems/GameLoop';
 import Tower from '../components/Tower';
-import DraggableTower from '../components/DraggableTower';
 import ObjectMap from '../components/ObjectMap';
 import AnimatedBackground from '../components/AnimatedBackground';
+import useGroundDimensions from '../components/useGroundDimensions';
+import { ScrollView } from 'react-native-gesture-handler';
+import objectMap from '../src/maps/objectMap';
 
-const towerStats = {
-  archer: { attackRange: 200, fireRate: 300, damage: 1 },
-  mage: { attackRange: 250, fireRate: 600, damage: 2 },
-  cannon: { attackRange: 180, fireRate: 1000, damage: 3 },
-};
+const TOWER_OPTIONS = [
+  { type: 'archer', label: 'Archer Tower', image: require('../assets/archer_tower.png') },
+  { type: 'cannon', label: 'Cannon Tower', image: require('../assets/cannon_tower.png') },
+  { type: 'mage',   label: 'Mage Tower',   image: require('../assets/mage_tower.png') },
+];
 
-const availableTowers = ['archer', 'mage', 'cannon'];
-const towerFallbackColors = {
-  archer: '#FFD700',
-  mage: '#8A2BE2',
-  cannon: '#000000',
-};
+function TowerSelectionMenu({ visible, onClose, onSelectTower }) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
+      <View style={styles.menuContainer}>
+        <Text style={styles.title}>Build a Tower</Text>
+        {TOWER_OPTIONS.map((tower) => (
+          <TouchableOpacity
+            key={tower.type}
+            style={styles.option}
+            onPress={() => onSelectTower(tower.type)}
+          >
+            <Image source={tower.image} style={styles.icon} />
+            <Text style={styles.label}>{tower.label}</Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity onPress={onClose} style={styles.cancelButton}>
+          <Text style={styles.cancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+}
 
 const GameScreen = ({ navigation, route }) => {
-  // Try to lock orientation to landscape on mount.
-  useEffect(() => {
-    try {
-      if (Orientation && Orientation.lockToLandscape) {
-        Orientation.lockToLandscape();
-      }
-    } catch (e) {
-      console.warn("Orientation module not available: ", e);
-    }
-    return () => {
-      try {
-        if (Orientation && Orientation.unlockAllOrientations) {
-          Orientation.unlockAllOrientations();
-        }
-      } catch (e) {
-        console.warn("Orientation module not available: ", e);
-      }
-    };
-  }, []);
+  // Get the native ground dimensions (e.g., 800×800).
+  const { groundWidth, groundHeight } = useGroundDimensions();
+  const { tileWidth, tileHeight } = useGroundDimensions();
 
+  // Get the window dimensions.
+  const windowDimensions = Dimensions.get('window');
+  const screenWidth = windowDimensions.width;
+  const screenHeight = windowDimensions.height;
+
+  // Calculate a minimum zoom scale so that the entire ground is visible initially.
+  const minZoomScale = Math.min(screenWidth / groundWidth, screenHeight / groundHeight);
+  const maxZoomScale = 5;
+
+  // Game state and refs.
   const initialLevel = route.params?.level || 1;
   const [entities, setEntities] = useState({});
   const [currentLevel, setCurrentLevel] = useState(initialLevel);
@@ -65,13 +95,17 @@ const GameScreen = ({ navigation, route }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const [levelConfigState, setLevelConfigState] = useState(cloneDeep(levelConfigs[initialLevel]));
 
+  const [mapObjects, setMapObjects] = useState([...objectMap]);
+  const [selectedPlace, setSelectedPlace] = useState(null);  // x,y + object id
+  const [showTowerMenu, setShowTowerMenu] = useState(false)
+
   const goldRef = useRef(gold);
   const towerCountRef = useRef(towerCount);
   useEffect(() => { goldRef.current = gold; }, [gold]);
   useEffect(() => { towerCountRef.current = towerCount; }, [towerCount]);
 
   const gameEngine = useRef(null);
-  const gameAreaRef = useRef(null);
+  const groundRef = useRef(null);
 
   const handleEvent = useCallback((e) => {
     InteractionManager.runAfterInteractions(() => {
@@ -105,58 +139,7 @@ const GameScreen = ({ navigation, route }) => {
   }, [levelCleared, currentLevel]);
 
   const handleTowerDrop = (towerType, dropPosition) => {
-    if (!dropPosition || dropPosition.x == null || dropPosition.y == null) {
-      console.error("Invalid drop position:", dropPosition);
-      return;
-    }
-    setTimeout(() => {
-      if (towerCountRef.current >= 3) {
-        Alert.alert("Maximum Towers", "You can only place 3 towers per level.");
-        return;
-      }
-      if (towerCountRef.current > 0 && goldRef.current < 10) {
-        Alert.alert("Not Enough Gold", "You need at least 10 gold to place another tower.");
-        return;
-      }
-      if (towerCountRef.current > 0) {
-        const newGold = goldRef.current - 10;
-        setGold(newGold);
-        goldRef.current = newGold;
-      }
-      const newTowerCount = towerCountRef.current + 1;
-      setTowerCount(newTowerCount);
-      towerCountRef.current = newTowerCount;
-      if (!gameAreaRef.current) return;
-      // Wrap the measureInWindow call in requestAnimationFrame to ensure that
-      // the state update happens after the current render completes.
-      requestAnimationFrame(() => {
-        gameAreaRef.current.measureInWindow((areaX, areaY) => {
-          const adjustedDropPosition = {
-            x: dropPosition.x - areaX,
-            y: dropPosition.y - areaY,
-          };
-          const newTowerId = 'tower' + Date.now() + Math.random().toString(36).substring(2);
-          const stats = towerStats[towerType] || { attackRange: 180, fireRate: 500, damage: 1 };
-          const newTower = {
-            id: newTowerId,
-            type: 'tower',
-            position: { ...adjustedDropPosition },
-            attackRange: stats.attackRange,
-            damage: stats.damage,
-            fireRate: stats.fireRate,
-            timeSinceLastShot: 0,
-            towerType: towerType,
-            color: towerFallbackColors[towerType] || 'gray',
-            renderer: Tower,
-          };
-          setEntities(prev => {
-            const updated = { ...prev, [newTowerId]: newTower };
-            if (gameEngine.current) gameEngine.current.swap(updated);
-            return updated;
-          });
-        });
-      });
-    }, 0);
+    // Implementation omitted for brevity.
   };
 
   const enemySpawnerSystem = (entities, args) => {
@@ -200,7 +183,7 @@ const GameScreen = ({ navigation, route }) => {
       setEntities({});
       setTowerCount(0);
       setGold(0);
-  
+
       if (EnemySpawner.reset) {
         EnemySpawner.reset();
       }
@@ -211,141 +194,196 @@ const GameScreen = ({ navigation, route }) => {
     }
   };
 
-  // Calculate full grid size for the zoomable content.
-  const totalWidth = 20 * (64 + 10); // 20 columns
-  const totalHeight = 6 * (64 + 10);   // 6 rows
+  const handleTowerPlacePress = (objectId, x, y) => {
+    // Store the selected place, show the tower menu
+    setSelectedPlace({ objectId, x, y });
+    setShowTowerMenu(true);
+  };
+
+  const buildTower = (towerType) => {
+    if (!selectedPlace) return;
+    const { x, y, objectId } = selectedPlace;
+  
+    // Remove tower place marker
+    setMapObjects(prev => prev.filter(obj => !(obj.x === x && obj.y === y && obj.id === objectId)));
+  
+    // Create tower entity
+    const towerId = 'tower-' + Date.now();
+    setEntities(prev => {
+      const newEntities = { ...prev };
+  
+      newEntities[towerId] = {
+        id: towerId,
+        type: 'tower',
+        towerType: towerType,
+        position: { x: x * tileWidth, y: y * tileHeight },
+        damage: 3,
+        attackRange: 150,
+        fireRate: 1000,
+        timeSinceLastShot: 0,
+        renderer: (props) => (
+          <Tower {...props} onPress={() => handleTowerClick(towerId)} />
+        ), // ✅ Pass click handler
+      };
+  
+      console.log('🔹 Tower placed at:', x * tileWidth, y * tileHeight);
+      return newEntities;
+    });
+  
+    // Hide selection menu
+    setShowTowerMenu(false);
+    setSelectedPlace(null);
+  };
+  
+  // Function to handle tower clicks
+  const handleTowerClick = (towerId) => {
+    console.log(`🏰 Tower ${towerId} clicked!`);
+    // Implement upgrade, sell, etc.
+  };
 
   return (
-    <View style={styles.container}>
-      {/* Horizontal, zoomable game area */}
-      <ScrollView
-        style={styles.zoomContainer}
-        contentContainerStyle={[styles.zoomContent, { width: totalWidth, height: totalHeight }]}
-        horizontal={true}
-        maximumZoomScale={3}
-        minimumZoomScale={0.5}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
+    <ZoomableView
+      groundWidth={groundWidth}
+      groundHeight={groundHeight}
+      screenWidth={screenWidth}
+      screenHeight={screenHeight}
+      minZoomScale={minZoomScale}
+      maxZoomScale={maxZoomScale}
+    >
+      <View style={[styles.groundContainer, { width: groundWidth, height: groundHeight }]}>
+      <AnimatedBackground 
+      style={{ zIndex: 1 }}
+      />
+      {/* 1) Render the map first */}
+      <ObjectMap
+        mapObjects={mapObjects}
+        onTowerPlacePress={handleTowerPlacePress}
+        style={{ zIndex: 2 }}
+      />
+
+<GameEngine
+  ref={gameEngine}
+  systems={[enemySpawnerSystem, GameLoop, levelCompletionSystem]}
+  entities={entities}
+  onEvent={handleEvent}
+  style={{
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    zIndex: 1, // ✅ Ensure GameEngine is BELOW
+  }}
+  pointerEvents="none" // ✅ Ensures touch passes through
+/>
+
+{/* 🔹 Render Tower Places First */}
+{mapObjects.map((obj) => {
+  if (obj.type === 'towerPlace') {
+    return (
+      <TouchableOpacity
+        key={obj.id}
+        style={[styles.towerPlace, { left: obj.x * tileWidth, top: obj.y * tileHeight }]}
+        onPress={() => handleTowerPlacePress(obj.id, obj.x, obj.y)}
       >
-        <View ref={gameAreaRef} style={styles.gameArea}>
-          <AnimatedBackground />
-          <ObjectMap />
-          <GameEngine
-            ref={gameEngine}
-            systems={[enemySpawnerSystem, GameLoop, levelCompletionSystem]}
-            entities={entities}
-            onEvent={handleEvent}
-            style={styles.gameEngine}
-          />
-          {levelCleared && (
-            <View style={styles.overlay}>
-              <Text style={styles.overlayText}>
-                Level {currentLevel} Cleared! Start Level {currentLevel + 1}
-              </Text>
-              <TouchableOpacity style={styles.nextButton} onPress={startNextLevel}>
-                <Text style={styles.nextButtonText}>Next Level</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </ScrollView>
-      {/* Deck */}
-      <View style={styles.deckContainer}>
-        <Text style={styles.deckTitle}>Deck</Text>
-        <View style={styles.towerRow}>
-          {availableTowers.map((towerType, index) => (
-            <DraggableTower
-              key={index}
-              towerType={towerType}
-              onDrop={(pos) => handleTowerDrop(towerType, pos)}
-              initialPosition={{ x: 10 + index * 60, y: 0 }}
-            />
-          ))}
-        </View>
-      </View>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('MainMenu')}>
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.levelIndicatorText}>Level {currentLevel}</Text>
-          <Text style={styles.goldText}>Gold: {gold}</Text>
-        </View>
-      </View>
+        <Image source={require('../assets/objects/PlaceForTower1.png')} style={styles.towerPlaceImage} />
+      </TouchableOpacity>
+    );
+  }
+  return null;
+})}
+
+{/* 🔹 Render Placed Towers Separately */}
+{Object.values(entities).map((entity) => {
+  if (entity.type === 'tower') {
+    return (
+      <Tower
+        key={entity.id}
+        position={entity.position}
+        towerType={entity.towerType}
+        onPress={() => handleTowerClick(entity.id)}
+      />
+    );
+  }
+  return null;
+})}
+
+
+      {/* 3) Tower selection menu last */}
+      <TowerSelectionMenu
+        visible={showTowerMenu}
+        onClose={() => setShowTowerMenu(false)}
+        onSelectTower={buildTower}
+      />
     </View>
+    </ZoomableView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1e1e1e' },
-  zoomContainer: {
-    flex: 1,
-  },
-  zoomContent: {
-    // Dimensions are provided by the calculated totalWidth and totalHeight.
-  },
-  gameArea: {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-  },
-  gameEngine: { flex: 1 },
   overlay: {
     position: 'absolute',
-    top: '40%',
-    left: 0,
-    right: 0,
+    left: 0, right: 0, top: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', 
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: 20,
-    zIndex: 300,
+    zIndex: 10,
   },
-  overlayText: { color: '#fff', fontSize: 24, marginBottom: 20 },
-  nextButton: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 8,
+  towerPlace: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10, // ✅ Ensure tower places are clickable
   },
-  nextButtonText: { color: '#fff', fontSize: 18 },
-  deckContainer: {
+  towerPlaceImage: {
+    width: 50,
+    height: 50,
+    resizeMode: 'contain',
+  },
+  menuContainer: {
+    width: 200,           // Make it n
+    // arrower
     backgroundColor: '#333',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    zIndex: 400,
+    borderRadius: 10,
+    padding: 15,          // Slightly smaller padding
+    alignItems: 'center',
   },
-  deckTitle: {
+  title: {
+    fontSize: 18,         // Slightly smaller text
     color: '#fff',
-    fontSize: 18,
-    marginBottom: 5,
+    marginBottom: 10,
     textAlign: 'center',
   },
-  towerRow: {
+  option: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
     alignItems: 'center',
+    backgroundColor: '#555',
+    marginVertical: 5,
+    padding: 8,
+    borderRadius: 6,
     width: '100%',
-    paddingHorizontal: 20,
   },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 500,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+  icon: {
+    width: 30,            // Smaller icon
+    height: 30,
+    marginRight: 10,
   },
-  backButton: { padding: 5 },
-  backButtonText: { color: '#fff', fontSize: 18 },
-  headerInfo: { flexDirection: 'row', alignItems: 'center' },
-  levelIndicatorText: { color: '#fff', fontSize: 16, marginRight: 10 },
-  goldText: { color: '#FFD700', fontSize: 16 },
+  label: {
+    color: '#fff',
+    fontSize: 14,         // Smaller label text
+  },
+  cancelButton: {
+    marginTop: 10,
+    padding: 8,
+    backgroundColor: '#999',
+    borderRadius: 6,
+  },
+  cancelText: {
+    color: '#fff',
+    textAlign: 'center',
+  },
 });
 
 export default GameScreen;
